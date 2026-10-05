@@ -1,0 +1,13 @@
+/config/config.php
+/node_modules/
+/storage/*
+!/storage/.gitkeep
+*.log
+*.sqlite*
+*.sql.gz
+*.bak
+*.zip
+.env
+.env.*
+*.pem
+*.key

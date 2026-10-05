@@ -1,0 +1,11 @@
+Options -Indexes
+Require all granted
+DirectoryIndex index.php
+<FilesMatch "(^\.|\.(sql|sqlite|log|ini|env|md|json|lock)$)">
+Require all denied
+</FilesMatch>
+<IfModule mod_headers.c>
+<FilesMatch "\.(css|js|woff2|svg)$">
+Header set Cache-Control "public, max-age=86400"
+</FilesMatch>
+</IfModule>

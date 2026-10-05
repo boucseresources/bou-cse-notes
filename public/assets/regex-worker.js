@@ -1,0 +1,1 @@
+self.onmessage=e=>{try{let regex=new RegExp(e.data.pattern,'gu'),matches=Array.from(e.data.text.matchAll(regex),m=>({match:m[0],index:m.index}));self.postMessage(matches.length?JSON.stringify(matches.slice(0,200),null,2):'No matches.')}catch(error){self.postMessage(error.message)}};

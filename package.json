@@ -1,0 +1,30 @@
+{
+  "name": "bou-cse-notes",
+  "version": "1.5.0",
+  "description": "",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "build": "node bin/build.mjs",
+    "check": "node --input-type=module --check < public/assets/app.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@fontsource/noto-serif-bengali": "^5.3.0",
+    "@tailwindcss/cli": "^4.3.3",
+    "codemirror": "^5.65.20",
+    "esbuild": "0.25.12",
+    "qrcode": "1.5.4",
+    "tailwindcss": "^4.3.3"
+  },
+  "private": true,
+  "devDependencies": {
+    "tailwind-reference": "npm:tailwindcss@^3.4.17"
+  }
+}

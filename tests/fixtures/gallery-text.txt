@@ -1,0 +1,3 @@
+Study notes
+<img src=x onerror=alert(1)>
+Plain text must stay inert.
