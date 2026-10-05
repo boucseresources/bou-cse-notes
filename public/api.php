@@ -132,7 +132,7 @@ try {
     if ($action==='password') {
         if (!password_verify($in['current_password']??'',$u['password_hash'])) fail('Current password is incorrect.');
         $pw=$in['password']??'';if (mb_strlen($pw)<12 || strlen($pw)>72) fail('Use a password of 12–72 characters.');
-        query('UPDATE users SET password_hash=?,session_version=session_version+1,updated_at=? WHERE id=?',[password_hash($pw,PASSWORD_DEFAULT),now(),$uid]);query('DELETE FROM tokens WHERE user_id=?',[$uid]);$_SESSION['version']=$u['session_version']+1;session_regenerate_id(true);cookie('bou_remember','',time()-3600);
+        query('UPDATE users SET password_hash=?,session_version=session_version+1,updated_at=? WHERE id=?',[password_hash($pw,PASSWORD_DEFAULT),now(),$uid]);query('DELETE FROM tokens WHERE user_id=?',[$uid]);$_SESSION['version']=$u['session_version']+1;session_regenerate_id(true);rotateCsrf();cookie('bou_remember','',time()-3600);
         sendMail($u['email'],'password_changed','Password changed','Your password was changed. Other sessions have been revoked.');respond(['ok'=>true]);
     }
     if ($action==='email') {
@@ -140,7 +140,7 @@ try {
         if (!filter_var($e,FILTER_VALIDATE_EMAIL) || mb_strlen($e)>190 || one('SELECT id FROM users WHERE email=?',[$e])) fail('Choose an available, valid email.');
         $raw=token($uid,'verify',86400,$e);$sent=sendMail($e,'email_change','Verify your new email','Verify your new email: '.cfg('app_url').'/#verify?token='.$raw);sendMail($u['email'],'email_change','Email change requested','An email change was requested on your account. Your address remains unchanged until verification.');respond(['message'=>$sent?'Verification sent to your new email.':'Delivery failed. Your current email remains unchanged.']);
     }
-    if ($action==='logout_all') {query('UPDATE users SET session_version=session_version+1 WHERE id=?',[$uid]);query('DELETE FROM tokens WHERE user_id=?',[$uid]);$_SESSION=[];session_destroy();cookie('bou_remember','',time()-3600);respond(['ok'=>true]);}
+    if ($action==='logout_all') {query('UPDATE users SET session_version=session_version+1 WHERE id=?',[$uid]);query('DELETE FROM tokens WHERE user_id=?',[$uid]);anonymousSession();respond(['ok'=>true]);}
     if ($action==='export') {
         header('Content-Type: application/json');header('Content-Disposition: attachment; filename="bou-workspace.json"');
         echo json_encode(['user'=>safeUser($u),'items'=>array_map(fn($x)=>itemData($x,true),all('SELECT * FROM items WHERE user_id=?',[$uid]))],JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE);exit;
@@ -167,3 +167,4 @@ try {
 } catch (InvalidArgumentException $e) {fail($e->getMessage());} catch (Throwable $e) {
     try { if (db()->inTransaction()) db()->rollBack(); } catch (Throwable $ignored) {} error_log('BOU error: '.$e->getMessage());fail('Unable to complete the request. Please try again or contact support.',500);
 }
+

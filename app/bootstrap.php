@@ -41,8 +41,15 @@ function query(string $sql,array $params=[]): PDOStatement { $s=db()->prepare($s
 function one(string $sql,array $params=[]): ?array { return query($sql,$params)->fetch() ?: null; }
 function all(string $sql,array $params=[]): array { return query($sql,$params)->fetchAll(); }
 function fail(string $message,int $status=400): never { http_response_code($status);header('Content-Type: application/json');echo json_encode(['error'=>$message]);exit; }
-function respond(mixed $data): never { header('Content-Type: application/json');echo json_encode($data,JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);exit; }
-function csrf(): void { if (!hash_equals($_SESSION['csrf'],$_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_POST['_csrf'] ?? '')) fail('Session expired. Reload and try again.',419); }
+function respond(mixed $data): never { header('X-CSRF-Token: '.($_SESSION['csrf']??''));header('X-BOU-User: '.($_SESSION['user_id']??''));header('Content-Type: application/json');echo json_encode($data,JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);exit; }
+function csrf(): void {
+    $expected=$_SESSION['csrf']??'';$provided=$_SERVER['HTTP_X_CSRF_TOKEN']??$_POST['_csrf']??'';
+    if (!is_string($provided) || !is_string($expected) || $expected==='' || !hash_equals($expected,$provided)) fail('Your session needs to be renewed. Please try again.',419);
+}
+function rotateCsrf(): void { $_SESSION['csrf']=bin2hex(random_bytes(32)); }
+function anonymousSession(): void {
+    $_SESSION=[];session_regenerate_id(true);rotateCsrf();cookie('bou_remember','',time()-3600);
+}
 function cookie(string $name,string $value,int $expires): void { global $production,$cookiePath;setcookie($name,$value,['expires'=>$expires,'path'=>$cookiePath,'secure'=>$production,'httponly'=>true,'samesite'=>'Lax']); }
 function user(bool $required=true,bool $verified=true): ?array {
     if (!isset($_SESSION['user_id']) && !empty($_COOKIE['bou_remember'])) {
@@ -102,4 +109,5 @@ function itemData(array $x,bool $full=false): array {
     $x['tags']=json_decode($x['tags']??'[]',true) ?: [];
     unset($x['stored_name']);if (!$full) unset($x['content']);return $x;
 }
+
 

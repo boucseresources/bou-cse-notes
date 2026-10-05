@@ -1,4 +1,5 @@
 let pending=0,uploads=0,lastButton=null,lastActionAt=0;
+export function holdUpload(){uploads++;let released=false;return ()=>{if(!released){released=true;uploads=Math.max(0,uploads-1)}}}
 export const hasActiveUploads=()=>uploads>0;
 document.addEventListener('click',e=>{lastButton=e.target.closest('button');lastActionAt=Date.now()},true);
 document.addEventListener('submit',e=>{lastButton=e.submitter||e.target.querySelector('button:not([type=button])');lastActionAt=Date.now()},true);
@@ -12,7 +13,7 @@ export function beginFeedback(label='Loading',silent=false){
 export function uploadRequest(action,form,csrf,onProgress){return new Promise((resolve,reject)=>{const xhr=new XMLHttpRequest();uploads++;xhr.open('POST','api.php?action='+encodeURIComponent(action));xhr.setRequestHeader('X-CSRF-Token',csrf);xhr.timeout=300000;
  xhr.upload.onprogress=e=>onProgress?.(e.lengthComputable?e.loaded/e.total:null,'uploading');xhr.upload.onload=()=>onProgress?.(1,'processing');
  const finish=()=>{uploads=Math.max(0,uploads-1)};
- xhr.onload=()=>{finish();let data;try{data=JSON.parse(xhr.responseText)}catch{reject(new Error('The server returned an unexpected response. Check hosting upload limits.'));return}if(xhr.status<200||xhr.status>=300){reject(new Error(data.error||'Upload failed.'));return}onProgress?.(1,'complete');resolve(data)};
+ xhr.onload=()=>{finish();let data;try{data=JSON.parse(xhr.responseText)}catch{reject(new Error('The server returned an unexpected response. Check hosting upload limits.'));return}if(xhr.status<200||xhr.status>=300){reject(Object.assign(new Error(data.error||'Upload failed.'),{status:xhr.status}));return}onProgress?.(1,'complete');resolve({result:data,csrf:xhr.getResponseHeader('X-CSRF-Token'),user:xhr.getResponseHeader('X-BOU-User')})};
  xhr.onerror=()=>{finish();reject(new Error('Connection lost. Check your connection and retry the remaining files.'))};xhr.ontimeout=()=>{finish();reject(new Error('Upload timed out. Retry the remaining files.'))};xhr.onabort=()=>{finish();reject(new Error('Upload cancelled.'))};xhr.send(form);
  })}
 export function progressMarkup(){return '<div class="upload-feedback" hidden><div class="upload-feedback-heading"><span class="feedback-spinner"></span><strong>Preparing upload</strong><span class="upload-percent">0%</span></div><div class="upload-track" role="progressbar" aria-label="File upload progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div></div></div><p class="upload-detail" role="status"></p><div class="upload-file-statuses"></div></div>'}
@@ -21,3 +22,4 @@ export function updateProgress(root,percent,title,detail,state='uploading'){
 }
 export function connectionFeedback(){let el=document.querySelector('#connection-feedback');if(!el){el=document.createElement('div');el.id='connection-feedback';el.setAttribute('role','status');document.body.append(el)}el.hidden=navigator.onLine;el.textContent='You’re offline. Reconnect to save changes or upload files.'}
 window.addEventListener('offline',connectionFeedback);window.addEventListener('online',connectionFeedback);connectionFeedback();
+
