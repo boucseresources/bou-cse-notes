@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 const ROOT = __DIR__ . '/..';
+require_once __DIR__.'/email-template.php';
 if (!is_file(ROOT.'/config/config.php')) {
     http_response_code(503); exit('Setup required: copy config/config.example.php to config/config.php and follow README.md.');
 }
@@ -85,7 +86,12 @@ function sendMail(string $to,string $kind,string $subject,string $body): bool {
             if (!class_exists(\PHPMailer\PHPMailer\PHPMailer::class)) throw new RuntimeException('Mail dependency unavailable');
             $mail=new \PHPMailer\PHPMailer\PHPMailer(true);$mail->isSMTP();$mail->Host=$m['host'];$mail->Port=$m['port'];$mail->SMTPAuth=true;$mail->Username=$m['username'];$mail->Password=$m['password'];$mail->SMTPSecure=$m['encryption'];$mail->Timeout=12;
             $mail->setFrom($m['from'],$m['from_name']);$mail->addAddress($to);$mail->CharSet='UTF-8';$mail->isHTML(true);$mail->Subject=$subject;
-            $mail->Body='<div style="font-family:Arial;max-width:600px;padding:32px"><h2 style="color:#032f73">BOU CSE Notes</h2><h3>'.htmlspecialchars($subject).'</h3><p>'.nl2br(htmlspecialchars($body)).'</p></div>';$mail->AltBody=$body;$mail->send();
+            $mail->Body=renderBrandedEmail($kind,$subject,$body,[
+                'name'=>'BOU CSE Notes',
+                'url'=>cfg('app_url'),
+                'support'=>cfg('support_email') ?? '',
+                'logo'=>$m['logo_url'] ?? '',
+            ]);$mail->AltBody=$body;$mail->send();
         }
     } catch (Throwable $e) { $status='failed';$detail='SMTP delivery failed; inspect SMTP settings and provider logs.';$sent=false;error_log('BOU mail delivery failed: '.$kind); }
     query('INSERT INTO email_logs(recipient,kind,status,detail,created_at) VALUES(?,?,?,?,?)',[$to,$kind,$status,$detail,now()]);return $sent;
@@ -96,3 +102,4 @@ function itemData(array $x,bool $full=false): array {
     $x['tags']=json_decode($x['tags']??'[]',true) ?: [];
     unset($x['stored_name']);if (!$full) unset($x['content']);return $x;
 }
+
