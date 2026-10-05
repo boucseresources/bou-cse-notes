@@ -166,7 +166,7 @@
   function copyObj(obj, target, overwrite) {
     if (!target) { target = {}; }
     for (var prop in obj)
-      { if (obj.hasOwnProperty(prop) && (overwrite !== false || !target.hasOwnProperty(prop)))
+      { if (Object.prototype.hasOwnProperty.call(obj, prop) && (overwrite !== false || !Object.prototype.hasOwnProperty.call(target, prop)))
         { target[prop] = obj[prop]; } }
     return target
   }
@@ -9877,7 +9877,7 @@
 
   addLegacyProps(CodeMirror);
 
-  CodeMirror.version = "5.65.20";
+  CodeMirror.version = "5.65.21";
 
   return CodeMirror;
 
@@ -10563,10 +10563,10 @@ CodeMirror.defineMode("clike", function(config, parserConfig) {
       "ByteArray Char CharArray DeprecationLevel DoubleArray Enum FloatArray Function Int IntArray Lazy " +
       "LazyThreadSafetyMode LongArray Nothing ShortArray Unit"
     ),
-    intendSwitch: false,
+    indentSwitch: false,
     indentStatements: false,
     multiLineStrings: true,
-    number: /^(?:0x[a-f\d_]+|0b[01_]+|(?:[\d_]+(\.\d+)?|\.\d+)(?:e[-+]?[\d_]+)?)(u|ll?|l|f)?/i,
+    number: /^(?:0x[a-f\d_]+|0b[01_]+|(?:[\d_]+(\.\d+)?|\.\d+)(?:e[-+]?[\d_]+)?)(ul?|l|f)?/i,
     blockKeywords: words("catch class do else finally for if where try while enum"),
     defKeywords: words("class val var object interface fun"),
     atoms: words("true false null this"),
