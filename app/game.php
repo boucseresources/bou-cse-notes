@@ -1,11 +1,7 @@
 <?php
 // Durable server-owned XP ledger. No client may choose an XP amount.
 function gameInit(): void {
- static $ready=false;if($ready)return;$ready=true;
- query('CREATE TABLE IF NOT EXISTS game_awards (user_id INTEGER NOT NULL, award_key VARCHAR(100) NOT NULL, category VARCHAR(20) NOT NULL, points INTEGER NOT NULL, created_at VARCHAR(19) NOT NULL, PRIMARY KEY(user_id,award_key))');
- query('CREATE TABLE IF NOT EXISTS game_profiles (user_id INTEGER PRIMARY KEY, campus VARCHAR(100) NOT NULL DEFAULT \'\', participating INTEGER NOT NULL DEFAULT 0)');
- query('CREATE TABLE IF NOT EXISTS game_state (user_id INTEGER PRIMARY KEY, fingerprint VARCHAR(64) NOT NULL)');
- query('CREATE TABLE IF NOT EXISTS game_cheers (giver_id INTEGER NOT NULL, receiver_id INTEGER NOT NULL, created_at VARCHAR(19) NOT NULL, PRIMARY KEY(giver_id,receiver_id))');
+ // Tables are installed by the versioned performance migration before this code is deployed.
 }
 function gameAward(int $uid,string $key,string $category,int $points,string $stamp=''): void {
  gameInit();$stamp=$stamp?:now();$day=substr($stamp,0,10);$caps=['code'=>100,'note'=>50,'share'=>25,'goal'=>60,'course'=>100,'activity'=>10,'challenge'=>20];
@@ -51,3 +47,4 @@ function gameLeaderboard(array $in,int $uid): array {
  $campuses=[];foreach($rows as $r)if($r['campus'])$campuses[$r['campus']]=($campuses[$r['campus']]??0)+$r['score'];arsort($campuses);
  return ['rows'=>$rows,'self'=>$self,'period'=>$period,'category'=>$category,'campuses'=>$campuses,'updated_at'=>now(),'day'=>gmdate('Y-m-d')];
 }
+

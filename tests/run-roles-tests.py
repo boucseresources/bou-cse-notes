@@ -30,5 +30,6 @@ with tempfile.TemporaryDirectory(prefix='bou-role-test-') as temporary:
    else:raise RuntimeError('Test server did not start.')
    env=os.environ.copy();env.update(BOU_TEST_URL=url,BOU_TEST_ROOT=str(root))
    subprocess.run(['python3',str(REPO/'tests/roles-api-test.py')],env=env,check=True)
+   subprocess.run(['python3',str(REPO/'tests/performance-api-test.py')],env=env,check=True)
   finally:
    process.terminate();process.wait(timeout=5)

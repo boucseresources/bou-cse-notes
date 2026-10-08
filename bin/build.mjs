@@ -11,3 +11,16 @@ execFileSync(process.execPath,['node_modules/tailwind-reference/lib/cli.js','-c'
 console.log('Production assets built. No Node server required.');
 
 execFileSync('node_modules/.bin/esbuild',['node_modules/qrcode/lib/browser.js','--bundle','--format=esm','--minify','--outfile=public/assets/qr.js'],{stdio:'inherit'});
+
+
+// Minified, content-addressed entry and lazy chunks. Keep old chunks for open tabs.
+const {build}=await import('esbuild');
+const built=await build({entryPoints:['public/assets/app.js'],bundle:true,format:'esm',splitting:true,minify:true,outdir:'public/assets/dist',entryNames:'app-[hash]',chunkNames:'chunk-[hash]',metafile:true,plugins:[{name:'preserve-file-preview-paths',setup(builder){builder.onResolve({filter:/^\.\/file-previews\.js/},args=>({path:'../'+args.path.slice(2),external:true}));}}]});
+const meta=built.metafile;
+const entry=Object.entries(meta.outputs).find(([,v])=>v.entryPoint==='public/assets/app.js')?.[0];
+if(!entry)throw Error('Built application entry missing.');
+const {createHash}=await import('node:crypto'),sources={};
+for(const input of Object.keys(meta.inputs)){const source=input.split('?')[0];if(fs.existsSync(source))sources[source]=createHash('sha256').update(fs.readFileSync(source)).digest('hex');}
+fs.writeFileSync(target+'/dist/manifest.json.next',JSON.stringify({entry:path.relative('public',entry).replaceAll('\\','/'),sources}));
+fs.renameSync(target+'/dist/manifest.json.next',target+'/dist/manifest.json');
+

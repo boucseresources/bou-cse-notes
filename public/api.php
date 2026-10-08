@@ -21,7 +21,7 @@ try {
         respond(['item'=>itemData($item,true),'owner'=>one('SELECT name FROM users WHERE id=?',[$s['user_id']])['name']]);
     }
     if(in_array($action,['temp_create','temp_get','temp_add','temp_delete'],true))tempAction($action,$in);
-    $u=user();$uid=(int)$u['id'];
+    $u=user();$uid=(int)$u['id'];if($method==='GET')session_write_close();
     if(str_starts_with($action,'control_')||str_starts_with($action,'group_')||str_starts_with($action,'broadcast_')||$action==='storage_request')roleAction($action,$in,$u);
     if($action==='leaderboard')respond(gameLeaderboard($in,$uid));
     if($action==='game_profile'){gameInit();$campus=trim((string)($in['campus']??''));if(mb_strlen($campus)>100)fail('Campus name is too long.');$insert=cfg('database')['driver']==='mysql'?'INSERT IGNORE':'INSERT OR IGNORE';query($insert.' INTO game_profiles(user_id,campus,participating) VALUES(?,\'\',0)',[$uid]);query('UPDATE game_profiles SET campus=?,participating=? WHERE user_id=?',[$campus,empty($in['participating'])?0:1,$uid]);respond(['ok'=>true]);}
@@ -35,14 +35,16 @@ try {
         if (!$previous || $stamp-$previous>=28) $_SESSION['coding_tick_at']=$stamp;
         respond(['recorded'=>true]);
     }
+    if ($action==='storage') {respond(['used'=>(int)one("SELECT COALESCE(SUM(size_bytes),0) AS used FROM items WHERE user_id=? AND kind='file'",[$uid])['used'],'quota'=>$u['quota_mb']*1048576,'max_upload_mb'=>$u['max_upload_mb']]);}
     if ($action==='dashboard') {
+        $metadata='id,user_id,kind,title,description,language,subject,tags,project_id,folder_id,favorite,pinned,original_name,mime,size_bytes,created_at,updated_at,deleted_at';
         $counts=all('SELECT kind,COUNT(*) AS total FROM items WHERE user_id=? AND deleted_at IS NULL GROUP BY kind',[$uid]);
         $used=(int)one("SELECT COALESCE(SUM(size_bytes),0) AS used FROM items WHERE user_id=? AND kind='file'",[$uid])['used'];
-        respond(['counts'=>$counts,'used'=>$used,'quota'=>accountLimit($uid,'quota_mb',500)*1048576,'max_upload_mb'=>accountLimit($uid,'max_upload_mb',10),
-            'recent'=>array_map(fn($x)=>itemData($x),all("SELECT * FROM items WHERE user_id=? AND deleted_at IS NULL AND kind IN ('code','note','project') ORDER BY updated_at DESC,id DESC LIMIT 8",[$uid])),
-            'recent_codes'=>array_map(fn($x)=>itemData($x),all("SELECT * FROM items WHERE user_id=? AND kind='code' AND deleted_at IS NULL ORDER BY updated_at DESC,id DESC LIMIT 20",[$uid])),
-            'recent_notes'=>array_map(fn($x)=>itemData($x),all("SELECT * FROM items WHERE user_id=? AND kind='note' AND deleted_at IS NULL ORDER BY pinned DESC,updated_at DESC,id DESC LIMIT 4",[$uid])),
-            'files'=>array_map(fn($x)=>itemData($x),all("SELECT * FROM items WHERE user_id=? AND kind='file' AND deleted_at IS NULL ORDER BY id DESC LIMIT 4",[$uid])),
+        respond(['counts'=>$counts,'used'=>$used,'quota'=>$u['quota_mb']*1048576,'max_upload_mb'=>$u['max_upload_mb'],
+            'recent'=>array_map(fn($x)=>itemData($x),all("SELECT $metadata FROM items WHERE user_id=? AND deleted_at IS NULL AND kind IN ('code','note','project') ORDER BY updated_at DESC,id DESC LIMIT 8",[$uid])),
+            'recent_codes'=>array_map(fn($x)=>itemData($x),all("SELECT $metadata FROM items WHERE user_id=? AND kind='code' AND deleted_at IS NULL ORDER BY updated_at DESC,id DESC LIMIT 20",[$uid])),
+            'recent_notes'=>array_map(fn($x)=>itemData($x),all("SELECT $metadata FROM items WHERE user_id=? AND kind='note' AND deleted_at IS NULL ORDER BY pinned DESC,updated_at DESC,id DESC LIMIT 4",[$uid])),
+            'files'=>array_map(fn($x)=>itemData($x),all("SELECT $metadata FROM items WHERE user_id=? AND kind='file' AND deleted_at IS NULL ORDER BY id DESC LIMIT 4",[$uid])),
             'activity'=>all('SELECT SUBSTR(created_at,1,10) AS day,COUNT(*) AS total FROM activity WHERE user_id=? AND created_at>? GROUP BY SUBSTR(created_at,1,10)',[$uid,gmdate('Y-m-d H:i:s',time()-7*86400)]),
             'study'=>studySummary($uid,$u),
             'unread'=>(int)one('SELECT COUNT(*) AS n FROM notifications WHERE user_id=? AND read_at IS NULL',[$uid])['n']]);
@@ -115,9 +117,10 @@ try {
     }
     if ($action==='notification_state') {
         $counts=one('SELECT COUNT(*) AS total,COALESCE(SUM(CASE WHEN read_at IS NULL THEN 1 ELSE 0 END),0) AS unread,COALESCE(MAX(id),0) AS latest_id FROM notifications WHERE user_id=?',[$uid]);
-        $xs=all('SELECT * FROM notifications WHERE user_id=? ORDER BY id DESC LIMIT 100',[$uid]);
-        $revision=hash('sha256',json_encode([$counts,$xs]));
-        respond(['total'=>(int)$counts['total'],'unread'=>(int)$counts['unread'],'latest_id'=>(int)$counts['latest_id'],'revision'=>$revision,'items'=>($in['since']??'')===$revision?null:$xs]);
+        // Notification bodies are immutable; create/read/delete changes alter these counters.
+        $revision=hash('sha256',json_encode($counts));
+        $xs=($in['since']??'')===$revision?null:all('SELECT * FROM notifications WHERE user_id=? ORDER BY id DESC LIMIT 100',[$uid]);
+        respond(['total'=>(int)$counts['total'],'unread'=>(int)$counts['unread'],'latest_id'=>(int)$counts['latest_id'],'revision'=>$revision,'items'=>$xs]);
     }
     if ($action==='delete_notification'){query('DELETE FROM notifications WHERE id=? AND user_id=?',[(int)($in['id']??0),$uid]);respond(['ok'=>true]);}
     if ($action==='notifications') respond(all('SELECT * FROM notifications WHERE user_id=? ORDER BY id DESC LIMIT 100',[$uid]));

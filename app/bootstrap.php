@@ -38,11 +38,11 @@ function db(): PDO {
     }
     return $db;
 }
-function query(string $sql,array $params=[]): PDOStatement { $s=db()->prepare($sql);$s->execute($params);return $s; }
+function query(string $sql,array $params=[]): PDOStatement {$started=microtime(true);$s=db()->prepare($sql);$s->execute($params);$GLOBALS['bou_db_ms']=($GLOBALS['bou_db_ms']??0)+(microtime(true)-$started)*1000;$GLOBALS['bou_db_queries']=($GLOBALS['bou_db_queries']??0)+1;return $s;}
 function one(string $sql,array $params=[]): ?array { return query($sql,$params)->fetch() ?: null; }
 function all(string $sql,array $params=[]): array { return query($sql,$params)->fetchAll(); }
 function fail(string $message,int $status=400): never { http_response_code($status);header('Content-Type: application/json');echo json_encode(['error'=>$message]);exit; }
-function respond(mixed $data): never { header('X-CSRF-Token: '.($_SESSION['csrf']??''));header('X-BOU-User: '.($_SESSION['user_id']??''));header('Content-Type: application/json');echo json_encode($data,JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);exit; }
+function respond(mixed $data): never {header('Server-Timing: db;dur='.round($GLOBALS['bou_db_ms']??0,2).', queries;desc="'.($GLOBALS['bou_db_queries']??0).'"'); header('X-CSRF-Token: '.($_SESSION['csrf']??''));header('X-BOU-User: '.($_SESSION['user_id']??''));header('Content-Type: application/json');echo json_encode($data,JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);exit; }
 function csrf(): void {
     $expected=$_SESSION['csrf']??'';$provided=$_SERVER['HTTP_X_CSRF_TOKEN']??$_POST['_csrf']??'';
     if (!is_string($provided) || !is_string($expected) || $expected==='' || !hash_equals($expected,$provided)) fail('Your session needs to be renewed. Please try again.',419);
@@ -67,7 +67,7 @@ function user(bool $required=true,bool $verified=true): ?array {
     if ($u && $verified && !$u['verified_at']) fail('Verify your email to open your workspace.',403);
     return $u;
 }
-function safeUser(array $u): array { $u=accountAccess($u);unset($u['password_hash']);$u['preferences']=json_decode($u['preferences']??'{}',true) ?: new stdClass();return $u; }
+function safeUser(array $u): array { if(!isset($u['permissions']))$u=accountAccess($u);unset($u['password_hash']);$u['preferences']=json_decode($u['preferences']??'{}',true) ?: new stdClass();return $u; }
 function limit(string $key,int $max,int $seconds): void {
     $bucket=hash('sha256',$key);$t=time();$driver=cfg('database')['driver'];
     if ($driver==='sqlite') query('INSERT OR IGNORE INTO rate_limits(bucket,attempts,started_at) VALUES(?,0,?)',[$bucket,$t]);
@@ -76,8 +76,9 @@ function limit(string $key,int $max,int $seconds): void {
     query('UPDATE rate_limits SET attempts=attempts+1 WHERE bucket=?',[$bucket]);
     if ((int)one('SELECT attempts FROM rate_limits WHERE bucket=?',[$bucket])['attempts']>$max) fail('Too many attempts. Please try again later.',429);
 }
-function setting(string $key,int|string $default): int|string { $r=one('SELECT value FROM settings WHERE `key`=?',[$key]);return $r?$r['value']:$default; }
-function putSetting(string $key,string $value): void { query('DELETE FROM settings WHERE `key`=?',[$key]);query('INSERT INTO settings (`key`,value) VALUES (?,?)',[$key,$value]); }
+function &requestSettings(): array {static $values=null;if($values===null)$values=array_column(all('SELECT `key`,value FROM settings'),'value','key');return $values;}
+function setting(string $key,int|string $default): int|string {return requestSettings()[$key]??$default;}
+function putSetting(string $key,string $value): void { query('DELETE FROM settings WHERE `key`=?',[$key]);query('INSERT INTO settings (`key`,value) VALUES (?,?)',[$key,$value]);$values=&requestSettings();$values[$key]=$value; }
 function notify(int $uid,string $title,string $content=''): void { query('INSERT INTO notifications(user_id,title,content,created_at) VALUES(?,?,?,?)',[$uid,$title,$content,now()]); }
 function activity(int $uid,string $action): void { query('INSERT INTO activity(user_id,action,created_at) VALUES(?,?,?)',[$uid,$action,now()]); }
 function token(int $uid,string $kind,int $seconds,?string $payload=null): string {
