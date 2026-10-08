@@ -9,6 +9,10 @@ function authAction(string $action,array $in): never {
         if (mb_strlen($name)<2 || mb_strlen($name)>120 || !filter_var($email,FILTER_VALIDATE_EMAIL) || mb_strlen($email)>190 || mb_strlen($pw)<12 || strlen($pw)>72) fail('Enter a name, valid email, and a password of 12–72 characters.');
         if (one('SELECT id FROM users WHERE email=?',[$email])) fail('Unable to create account with these details. Try signing in or resetting your password.');
         query('INSERT INTO users(name,email,password_hash,created_at,updated_at) VALUES(?,?,?,?,?)',[$name,$email,password_hash($pw,PASSWORD_DEFAULT),now(),now()]);$id=(int)db()->lastInsertId();
+        $requestedRole=($in['role']??'student')==='teacher'?'teacher':'student';
+        query('UPDATE users SET role=? WHERE id=?',[$requestedRole,$id]);
+        controlRecord($id);query("UPDATE account_controls SET approval='pending' WHERE user_id=?",[$id]);
+        foreach(all("SELECT id FROM users WHERE role IN ('super_admin','admin') AND status='active'") as $admin)notify((int)$admin['id'],'Account approval requested',$name.' requested a '.$requestedRole.' account.');
         $raw=token($id,'verify',86400);
         $sent=sendMail($email,'verify','Verify your email',"Welcome, $name. Verify your account:\n".cfg('app_url').'/#verify?token='.$raw);
         session_regenerate_id(true);rotateCsrf();$_SESSION['user_id']=$id;$_SESSION['version']=1;$_SESSION['last_seen']=time();
@@ -65,4 +69,5 @@ function authAction(string $action,array $in): never {
     }
     fail('Unknown authentication action.',404);
 }
+
 

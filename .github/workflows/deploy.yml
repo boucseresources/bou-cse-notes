@@ -20,8 +20,15 @@ jobs:
           cache: npm
       - name: Build browser assets
         run: npm ci && npm run build && npm run check && node --test tests/session-client.test.mjs
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_sqlite, mbstring, fileinfo, zip
+          coverage: none
       - name: Check PHP syntax
         run: find app bin public vendor -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Test roles and approvals with isolated SQLite database
+        run: python3 tests/run-roles-tests.py
       - name: Upload and deploy
         env:
           SSH_HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
@@ -44,4 +51,5 @@ jobs:
           ssh -i ~/.ssh/hostinger -p "$SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes "$SSH_USER@$SSH_HOST" "mkdir -m 700 '$remote'"
           scp -i ~/.ssh/hostinger -P "$SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes /tmp/bou-release.tar.gz "$SSH_USER@$SSH_HOST:$remote/release.tar.gz"
           ssh -i ~/.ssh/hostinger -p "$SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes "$SSH_USER@$SSH_HOST" "set -e; cd '$remote'; tar -xzf release.tar.gz; bash deploy/hostinger.sh .; cd ..; rm -rf '$remote'"
+
 

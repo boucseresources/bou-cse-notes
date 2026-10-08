@@ -6,13 +6,15 @@ try {
     $action=$_GET['action']??'session';$method=$_SERVER['REQUEST_METHOD'];
     $in=$method==='POST'?(str_contains($_SERVER['CONTENT_TYPE']??'','application/json')?json_decode(file_get_contents('php://input'),true):$_POST):$_GET;
     if (!is_array($in)) fail('Invalid request.');
-    $writes=['game_profile','game_cheer','temp_create','temp_add','temp_delete','study_save','coding_tick','register','login','logout','forgot','verify','reset','resend','save','upload','favorite','trash','restore','purge','duplicate','version_restore','share','revoke','settings','password','email','logout_all','mark_read','delete_notification','admin_update','admin_config','announce','report','delete_request'];
+    $writes=['control_user','control_guest','control_request','storage_request','group_save','group_delete','broadcast_publish','broadcast_revoke','game_profile','game_cheer','temp_create','temp_add','temp_delete','study_save','coding_tick','register','login','logout','forgot','verify','reset','resend','save','upload','favorite','trash','restore','purge','duplicate','version_restore','share','revoke','settings','password','email','logout_all','mark_read','delete_notification','admin_update','admin_config','announce','report','delete_request'];
     if (in_array($action,$writes,true)) { if ($method!=='POST') fail('POST required.',405);csrf(); }
     if (in_array($action,['register','login','logout','forgot','verify','reset','resend'],true)) authAction($action,$in);
+    if ($action==='guest_limits') respond(guestLimits());
     if ($action==='session') { $u=user(false,false);respond(['user'=>$u?safeUser($u):null,'csrf'=>$_SESSION['csrf']]); }
     if ($action==='shared') {
         $token=$in['token']??'';$s=one('SELECT s.*,u.status FROM shares s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND (s.expires_at IS NULL OR s.expires_at>?)',[hash('sha256',$token),now()]);
         if (!$s || $s['status']!=='active') fail('Share link is unavailable.',404);
+        if(accountAccess(one('SELECT * FROM users WHERE id=?',[$s['user_id']]))['approval']!=='approved')fail('Share link is unavailable.',404);
         if ($s['recipient_id']) { $v=user();if ((int)$s['recipient_id']!==(int)$v['id'] && (int)$s['user_id']!==(int)$v['id']) fail('Share link is unavailable.',404); }
         $item=one('SELECT * FROM items WHERE id=? AND deleted_at IS NULL',[$s['item_id']]);if (!$item) fail('Share link is unavailable.',404);
         // Attachments stay private. Sharing a parent never grants file access.
@@ -20,6 +22,7 @@ try {
     }
     if(in_array($action,['temp_create','temp_get','temp_add','temp_delete'],true))tempAction($action,$in);
     $u=user();$uid=(int)$u['id'];
+    if(str_starts_with($action,'control_')||str_starts_with($action,'group_')||str_starts_with($action,'broadcast_')||$action==='storage_request')roleAction($action,$in,$u);
     if($action==='leaderboard')respond(gameLeaderboard($in,$uid));
     if($action==='game_profile'){gameInit();$campus=trim((string)($in['campus']??''));if(mb_strlen($campus)>100)fail('Campus name is too long.');$insert=cfg('database')['driver']==='mysql'?'INSERT IGNORE':'INSERT OR IGNORE';query($insert.' INTO game_profiles(user_id,campus,participating) VALUES(?,\'\',0)',[$uid]);query('UPDATE game_profiles SET campus=?,participating=? WHERE user_id=?',[$campus,empty($in['participating'])?0:1,$uid]);respond(['ok'=>true]);}
     if($action==='game_cheer'){gameInit();$id=(int)($in['id']??0);if($id===$uid)fail('Cheer for another student.');if(!one("SELECT u.id FROM users u JOIN game_profiles p ON p.user_id=u.id WHERE u.id=? AND u.status='active' AND u.verified_at IS NOT NULL AND p.participating=1",[$id]))fail('Student unavailable.',404);$insert=cfg('database')['driver']==='mysql'?'INSERT IGNORE':'INSERT OR IGNORE';query($insert.' INTO game_cheers(giver_id,receiver_id,created_at) VALUES(?,?,?)',[$uid,$id,now()]);respond(['ok'=>true]);}
@@ -35,7 +38,7 @@ try {
     if ($action==='dashboard') {
         $counts=all('SELECT kind,COUNT(*) AS total FROM items WHERE user_id=? AND deleted_at IS NULL GROUP BY kind',[$uid]);
         $used=(int)one("SELECT COALESCE(SUM(size_bytes),0) AS used FROM items WHERE user_id=? AND kind='file'",[$uid])['used'];
-        respond(['counts'=>$counts,'used'=>$used,'quota'=>(int)setting('quota_mb',500)*1048576,'max_upload_mb'=>(int)setting('max_upload_mb',10),
+        respond(['counts'=>$counts,'used'=>$used,'quota'=>accountLimit($uid,'quota_mb',500)*1048576,'max_upload_mb'=>accountLimit($uid,'max_upload_mb',10),
             'recent'=>array_map(fn($x)=>itemData($x),all("SELECT * FROM items WHERE user_id=? AND deleted_at IS NULL AND kind IN ('code','note','project') ORDER BY updated_at DESC,id DESC LIMIT 8",[$uid])),
             'recent_codes'=>array_map(fn($x)=>itemData($x),all("SELECT * FROM items WHERE user_id=? AND kind='code' AND deleted_at IS NULL ORDER BY updated_at DESC,id DESC LIMIT 20",[$uid])),
             'recent_notes'=>array_map(fn($x)=>itemData($x),all("SELECT * FROM items WHERE user_id=? AND kind='note' AND deleted_at IS NULL ORDER BY pinned DESC,updated_at DESC,id DESC LIMIT 4",[$uid])),
@@ -107,7 +110,7 @@ try {
     }
     if ($action==='direct_item') {
         $s=one('SELECT * FROM shares WHERE id=? AND recipient_id=? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>?)',[(int)($in['share_id']??0),$uid,now()]);
-        if (!$s) fail('Share unavailable.',404);$owner=one('SELECT status FROM users WHERE id=?',[$s['user_id']]);if (!$owner || $owner['status']!=='active') fail('Share unavailable.',404);
+        if (!$s) fail('Share unavailable.',404);$owner=one('SELECT * FROM users WHERE id=?',[$s['user_id']]);if (!$owner || $owner['status']!=='active'||accountAccess($owner)['approval']!=='approved') fail('Share unavailable.',404);
         respond(['item'=>itemData(owned((int)$s['item_id'],(int)$s['user_id']),true),'share_id'=>$s['id']]);
     }
     if ($action==='notification_state') {
@@ -145,14 +148,14 @@ try {
         header('Content-Type: application/json');header('Content-Disposition: attachment; filename="bou-workspace.json"');
         echo json_encode(['user'=>safeUser($u),'items'=>array_map(fn($x)=>itemData($x,true),all('SELECT * FROM items WHERE user_id=?',[$uid]))],JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE);exit;
     }
-    if ($action==='delete_request') {limit('delete-request-'.$uid,1,86400);if (!password_verify($in['password']??'',$u['password_hash'])) fail('Password is incorrect.');foreach (all("SELECT id FROM users WHERE role='admin' AND status='active'") as $a) notify((int)$a['id'],'Account deletion request',$u['email'].' has requested account deletion. Contact the student and follow the backup retention policy.');notify($uid,'Deletion request received','An administrator will contact you to confirm and process your request.');respond(['ok'=>true]);}
+    if ($action==='delete_request') {limit('delete-request-'.$uid,1,86400);if (!password_verify($in['password']??'',$u['password_hash'])) fail('Password is incorrect.');foreach (all("SELECT id FROM users WHERE role IN ('admin','super_admin') AND status='active'") as $a) notify((int)$a['id'],'Account deletion request',$u['email'].' has requested account deletion. Contact the student and follow the backup retention policy.');notify($uid,'Deletion request received','An administrator will contact you to confirm and process your request.');respond(['ok'=>true]);}
     if ($action==='help') respond(['support_email'=>setting('support_email',cfg('support_email'))]);
-    if ($action==='report') {limit('report-'.$uid,5,3600);$content=trim($in['content']??'');if (!$content || mb_strlen($content)>4000) fail('Write a message of up to 4000 characters.');foreach (all("SELECT id FROM users WHERE role='admin' AND status='active'") as $a) notify((int)$a['id'],'Feedback / content report',$u['email'].': '.$content);respond(['ok'=>true]);}
+    if ($action==='report') {limit('report-'.$uid,5,3600);$content=trim($in['content']??'');if (!$content || mb_strlen($content)>4000) fail('Write a message of up to 4000 characters.');foreach (all("SELECT id FROM users WHERE role IN ('admin','super_admin') AND status='active'") as $a) notify((int)$a['id'],'Feedback / content report',$u['email'].': '.$content);respond(['ok'=>true]);}
     if (str_starts_with($action,'admin_') || $action==='announce') {
-        if ($u['role']!=='admin') fail('Administrator access required.',403);
+        if (!isSuper($u)) fail('Administrator access required.',403);
         if ($action==='admin_data') respond(['users'=>all('SELECT u.id,u.name,u.email,u.role,u.status,u.verified_at,u.created_at,COALESCE(SUM(i.size_bytes),0) AS used FROM users u LEFT JOIN items i ON i.user_id=u.id GROUP BY u.id,u.name,u.email,u.role,u.status,u.verified_at,u.created_at ORDER BY u.id DESC LIMIT 200'),
             'settings'=>all('SELECT * FROM settings'),'emails'=>all('SELECT * FROM email_logs ORDER BY id DESC LIMIT 100'),'shares'=>all('SELECT s.id,i.title,u.email,s.created_at FROM shares s JOIN items i ON i.id=s.item_id JOIN users u ON u.id=s.user_id WHERE s.revoked_at IS NULL ORDER BY s.id DESC LIMIT 100')]);
-        if ($action==='admin_update') { $id=(int)($in['id']??0);$target=one('SELECT * FROM users WHERE id=?',[$id]);if (!$target || $id===$uid || $target['role']==='admin') fail('Cannot change this administrator.');$status=($in['status']??'')==='suspended'?'suspended':'active';query('UPDATE users SET status=?,session_version=session_version+1 WHERE id=?',[$status,$id]);query("DELETE FROM tokens WHERE user_id=? AND kind='remember'",[$id]);respond(['ok'=>true]); }
+        if ($action==='admin_update') { $id=(int)($in['id']??0);$target=one('SELECT * FROM users WHERE id=?',[$id]);if (!$target || $id===$uid || isSuper($target)) fail('Cannot change this administrator.');$status=($in['status']??'')==='suspended'?'suspended':'active';query('UPDATE users SET status=?,session_version=session_version+1 WHERE id=?',[$status,$id]);query("DELETE FROM tokens WHERE user_id=? AND kind='remember'",[$id]);respond(['ok'=>true]); }
         if ($action==='admin_config') {
             $previousSettings=all('SELECT * FROM settings');db()->beginTransaction();foreach (['quota_mb'=>[1,10000],'max_upload_mb'=>[1,50],'trash_days'=>[1,365]] as $k=>$range) {$v=(int)($in[$k]??0);if ($v<$range[0] || $v>$range[1]) {db()->rollBack();fail('Configuration values are out of range.');}putSetting($k,(string)$v);}
             if (!filter_var($in['support_email']??'',FILTER_VALIDATE_EMAIL)) {db()->rollBack();fail('Enter a valid support email.');}putSetting('support_email',$in['support_email']);$changes=[];foreach($previousSettings as $settingRow){$key=$settingRow['key'];if(isset($in[$key])&&(string)$in[$key]!==$settingRow['value'])$changes[]=$key;}if($changes){$labels=['quota_mb'=>'Storage quota','max_upload_mb'=>'Maximum upload size','trash_days'=>'Trash retention','support_email'=>'Support email'];$message=implode("\n",array_map(fn($key)=>($labels[$key]??$key).': '.$in[$key].(in_array($key,['quota_mb','max_upload_mb'])?' MB':($key==='trash_days'?' days':'')),$changes));foreach(all("SELECT id FROM users WHERE status='active'") as $account)notify((int)$account['id'],'Workspace settings updated',$message);}db()->commit();respond(['ok'=>true]);
@@ -167,4 +170,5 @@ try {
 } catch (InvalidArgumentException $e) {fail($e->getMessage());} catch (Throwable $e) {
     try { if (db()->inTransaction()) db()->rollBack(); } catch (Throwable $ignored) {} error_log('BOU error: '.$e->getMessage());fail('Unable to complete the request. Please try again or contact support.',500);
 }
+
 

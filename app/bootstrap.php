@@ -2,6 +2,7 @@
 declare(strict_types=1);
 const ROOT = __DIR__ . '/..';
 require_once __DIR__.'/email-template.php';
+require_once __DIR__.'/roles.php';
 if (!is_file(ROOT.'/config/config.php')) {
     http_response_code(503); exit('Setup required: copy config/config.example.php to config/config.php and follow README.md.');
 }
@@ -60,12 +61,13 @@ function user(bool $required=true,bool $verified=true): ?array {
     if ($u && ($u['status']!=='active' || (int)$u['session_version']!==(int)($_SESSION['version']??0) || time()-($_SESSION['last_seen']??0)>cfg('session_lifetime'))) {
         unset($_SESSION['user_id']);cookie('bou_remember','',time()-3600);$u=null;
     }
-    if ($u) $_SESSION['last_seen']=time();
+    if ($u) {$_SESSION['last_seen']=time();$u=accountAccess($u);}
     if (!$u && $required) fail('Please sign in.',401);
+    if ($u && $required && $verified && ($u['approval']??'approved')!=='approved') fail('Your account is awaiting approval or was declined. Contact an administrator.',403);
     if ($u && $verified && !$u['verified_at']) fail('Verify your email to open your workspace.',403);
     return $u;
 }
-function safeUser(array $u): array { unset($u['password_hash']);$u['preferences']=json_decode($u['preferences']??'{}',true) ?: new stdClass();return $u; }
+function safeUser(array $u): array { $u=accountAccess($u);unset($u['password_hash']);$u['preferences']=json_decode($u['preferences']??'{}',true) ?: new stdClass();return $u; }
 function limit(string $key,int $max,int $seconds): void {
     $bucket=hash('sha256',$key);$t=time();$driver=cfg('database')['driver'];
     if ($driver==='sqlite') query('INSERT OR IGNORE INTO rate_limits(bucket,attempts,started_at) VALUES(?,0,?)',[$bucket,$t]);
@@ -109,5 +111,6 @@ function itemData(array $x,bool $full=false): array {
     $x['tags']=json_decode($x['tags']??'[]',true) ?: [];
     unset($x['stored_name']);if (!$full) unset($x['content']);return $x;
 }
+
 
 

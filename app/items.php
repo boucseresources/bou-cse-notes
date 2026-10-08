@@ -57,7 +57,7 @@ function fullItem(int $id,int $uid): array {
 function upload(int $uid): array {
     $f=$_FILES['file']??null;
     if (!$f || $f['error']!==UPLOAD_ERR_OK) fail('Upload failed. Check file size and hosting upload limits.');
-    if ($f['size']<1 || $f['size']>(int)setting('max_upload_mb',10)*1048576) fail('File exceeds the upload limit or is empty.');
+    if ($f['size']<1 || $f['size']>accountLimit($uid,'max_upload_mb',10)*1048576) fail('File exceeds the upload limit or is empty.');
     $name=basename(str_replace('\\','/',$f['name']));$ext=strtolower(pathinfo($name,PATHINFO_EXTENSION));
     $allow=mediaTypes();
     $mime=(new finfo(FILEINFO_MIME_TYPE))->file($f['tmp_name']);
@@ -71,11 +71,11 @@ function upload(int $uid): array {
     try {
         if (cfg('database')['driver']==='mysql') one('SELECT id FROM users WHERE id=? FOR UPDATE',[$uid]);
         $used=(int)one("SELECT COALESCE(SUM(size_bytes),0) AS used FROM items WHERE user_id=? AND kind='file'",[$uid])['used'];
-        if ($used+$f['size']>(int)setting('quota_mb',500)*1048576) {db()->rollBack();fail('Storage is full. Permanently delete files from Trash before uploading.');}
+        if ($used+$f['size']>accountLimit($uid,'quota_mb',500)*1048576) {db()->rollBack();fail('Storage is full. Permanently delete files from Trash before uploading.');}
         if (!move_uploaded_file($f['tmp_name'],$dest)) throw new RuntimeException('Unable to store upload.');chmod($dest,0600);
         query("INSERT INTO items(user_id,kind,title,original_name,stored_name,mime,size_bytes,project_id,folder_id,created_at,updated_at) VALUES(?,'file',?,?,?,?,?,?,?,?,?)",[$uid,$name,$name,$stored,$mime,$f['size'],$project,$folder,now(),now()]);$id=(int)db()->lastInsertId();
         activity($uid,'upload');
-        if ($used+$f['size']>(int)setting('quota_mb',500)*1048576*0.9) notify($uid,'Storage almost full','Your workspace is using more than 90% of its storage quota.');
+        if ($used+$f['size']>accountLimit($uid,'quota_mb',500)*1048576*0.9) notify($uid,'Storage almost full','Your workspace is using more than 90% of its storage quota.');
         db()->commit();return itemData(owned($id,$uid),true);
     } catch (Throwable $e) {if (db()->inTransaction()) db()->rollBack();if (is_file($dest)) unlink($dest);throw $e;}
 }
@@ -83,3 +83,4 @@ function deleteForever(array $x): void {
     if ($x['kind']==='file' && $x['stored_name']) { $p=cfg('storage_path').'/uploads/'.basename($x['stored_name']);if (is_file($p) && !unlink($p)) throw new RuntimeException('Unable to remove file bytes.'); }
     query('DELETE FROM items WHERE id=?',[$x['id']]);
 }
+
