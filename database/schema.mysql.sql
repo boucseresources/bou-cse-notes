@@ -63,3 +63,4 @@ CREATE TABLE IF NOT EXISTS activity (
 CREATE TABLE IF NOT EXISTS settings (`key` VARCHAR(80) PRIMARY KEY, value TEXT NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 INSERT IGNORE INTO settings (`key`,value) VALUES ('quota_mb','500'),('max_upload_mb','10'),('trash_days','30'),('support_email','support@example.com');
+

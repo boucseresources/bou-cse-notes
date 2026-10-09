@@ -5,8 +5,9 @@ header('Cache-Control: no-store');
 try {
     $action=$_GET['action']??'session';$method=$_SERVER['REQUEST_METHOD'];
     $in=$method==='POST'?(str_contains($_SERVER['CONTENT_TYPE']??'','application/json')?json_decode(file_get_contents('php://input'),true):$_POST):$_GET;
+    if($method==='POST'&&(int)($_SERVER['CONTENT_LENGTH']??0)>iniBytes((string)ini_get('post_max_size')))fail('The upload exceeds the hosting request-size limit. Choose a smaller file.',413);
     if (!is_array($in)) fail('Invalid request.');
-    $writes=['control_user','control_guest','control_request','storage_request','group_save','group_delete','broadcast_publish','broadcast_revoke','game_profile','game_cheer','temp_create','temp_add','temp_delete','study_save','coding_tick','register','login','logout','forgot','verify','reset','resend','save','upload','favorite','trash','restore','purge','duplicate','version_restore','share','revoke','settings','password','email','logout_all','mark_read','delete_notification','admin_update','admin_config','announce','report','delete_request'];
+    $writes=['profile_photo','profile_photo_remove','control_user','control_guest','control_request','storage_request','group_save','group_delete','broadcast_publish','broadcast_revoke','game_profile','game_cheer','temp_create','temp_add','temp_delete','study_save','coding_tick','register','login','logout','forgot','verify','reset','resend','save','upload','favorite','trash','restore','purge','duplicate','version_restore','share','revoke','settings','password','email','logout_all','mark_read','delete_notification','admin_update','admin_config','announce','report','delete_request'];
     if (in_array($action,$writes,true)) { if ($method!=='POST') fail('POST required.',405);csrf(); }
     if (in_array($action,['register','login','logout','forgot','verify','reset','resend'],true)) authAction($action,$in);
     if ($action==='guest_limits') respond(guestLimits());
@@ -22,6 +23,8 @@ try {
     }
     if(in_array($action,['temp_create','temp_get','temp_add','temp_delete'],true))tempAction($action,$in);
     $u=user();$uid=(int)$u['id'];if($method==='GET')session_write_close();
+    if(in_array($action,['profile_photo','profile_photo_remove'],true))photoAction($u);
+    if($action==='upload_policy')respond(['max_file_bytes'=>min($u['max_upload_mb']*1048576,hostingFileLimit()),'quota_mb'=>$u['quota_mb'],'formats'=>'Images, PDF, documents, text, video and audio']);
     if(str_starts_with($action,'control_')||str_starts_with($action,'group_')||str_starts_with($action,'broadcast_')||$action==='storage_request')roleAction($action,$in,$u);
     if($action==='leaderboard')respond(gameLeaderboard($in,$uid));
     if($action==='game_profile'){gameInit();$campus=trim((string)($in['campus']??''));if(mb_strlen($campus)>100)fail('Campus name is too long.');$insert=cfg('database')['driver']==='mysql'?'INSERT IGNORE':'INSERT OR IGNORE';query($insert.' INTO game_profiles(user_id,campus,participating) VALUES(?,\'\',0)',[$uid]);query('UPDATE game_profiles SET campus=?,participating=? WHERE user_id=?',[$campus,empty($in['participating'])?0:1,$uid]);respond(['ok'=>true]);}
@@ -133,7 +136,9 @@ try {
         $name=trim($in['name']??'');$semester=trim($in['semester']??'');if (mb_strlen($name)<2 || mb_strlen($name)>120 || mb_strlen($semester)>60) fail('Enter a name and a valid semester.');
         $prefs=['default_language'=>mb_substr($in['default_language']??'C',0,40),'timezone'=>in_array($in['timezone']??'',timezone_identifiers_list(),true)?$in['timezone']:'Asia/Dhaka','security_email'=>!empty($in['security_email']),'sharing_email'=>!empty($in['sharing_email']),'announcement_email'=>!empty($in['announcement_email'])];
         $avatar=trim($in['avatar']??'');if ($avatar && !preg_match('/^[A-Za-z0-9]{1,3}$/',$avatar)) fail('Avatar initials must be 1–3 letters or numbers.');
-        query('UPDATE users SET name=?,semester=?,avatar=?,preferences=?,updated_at=? WHERE id=?',[$name,$semester,$avatar,json_encode($prefs),now(),$uid]);respond(['user'=>safeUser(one('SELECT * FROM users WHERE id=?',[$uid]))]);
+        $username=isset($in['username'])?normalizedUsername((string)$in['username']):$u['username'];
+        if(one('SELECT id FROM users WHERE username=? AND id<>?',[$username,$uid]))fail('Username is already taken.');
+        try{query('UPDATE users SET name=?,username=?,semester=?,avatar=?,preferences=?,updated_at=? WHERE id=?',[$name,$username,$semester,$avatar,json_encode($prefs),now(),$uid]);}catch(PDOException $e){if($e->getCode()==='23000')fail('Username is already taken.');throw $e;}respond(['user'=>safeUser(one('SELECT * FROM users WHERE id=?',[$uid]))]);
     }
     if ($action==='password') {
         if (!password_verify($in['current_password']??'',$u['password_hash'])) fail('Current password is incorrect.');

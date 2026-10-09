@@ -55,16 +55,15 @@ function fullItem(int $id,int $uid): array {
     $x['shares']=all('SELECT s.id,s.recipient_id,s.expires_at,s.created_at,u.email FROM shares s LEFT JOIN users u ON s.recipient_id=u.id WHERE s.item_id=? AND s.user_id=? AND s.revoked_at IS NULL',[$id,$uid]);return $x;
 }
 function upload(int $uid): array {
-    $f=$_FILES['file']??null;
-    if (!$f || $f['error']!==UPLOAD_ERR_OK) fail('Upload failed. Check file size and hosting upload limits.');
-    if ($f['size']<1 || $f['size']>accountLimit($uid,'max_upload_mb',10)*1048576) fail('File exceeds the upload limit or is empty.');
+    $f=receivedFile();
+    if ($f['size']<1 || $f['size']>min(accountLimit($uid,'max_upload_mb',10)*1048576,hostingFileLimit())) fail('File exceeds the upload limit or is empty.');
     $name=basename(str_replace('\\','/',$f['name']));$ext=strtolower(pathinfo($name,PATHINFO_EXTENSION));
     $allow=mediaTypes();
     $mime=(new finfo(FILEINFO_MIME_TYPE))->file($f['tmp_name']);
     if (!isset($allow[$ext]) || !in_array($mime,$allow[$ext],true) || mb_strlen($name)>255) fail('Allowed: images, videos, audio, PDF, DOCX, ODT, TXT, Markdown, CSV. File content must match its type.');
     if(in_array($ext,['docx','odt'])&&!validOfficeDocument($f['tmp_name'],$ext))fail('Invalid document structure.');
     $raw=file_get_contents($f['tmp_name'],false,null,0,8192);
-    if (preg_match('/<\?(?:php|=)|<script\b|<html\b/i',$raw)) fail('Executable or HTML uploads are not allowed.');
+    if (str_starts_with($mime,'text/')&&preg_match('/<\?(?:php|=)|<script\b|<html\b/i',$raw)) fail('Executable or HTML uploads are not allowed.');
     [$project,$folder]=validateRelations($_POST,$uid);
     $stored=bin2hex(random_bytes(24)).'.'.$ext;$dest=cfg('storage_path').'/uploads/'.$stored;
     db()->beginTransaction();

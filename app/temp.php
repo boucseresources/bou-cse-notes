@@ -24,7 +24,7 @@ function tempAction(string $action,array $in): never {
         limit('temp-add-'.$ip,30,3600);if(count($p['entries'])>=$limits['entries'])fail('This page has reached its entry limit.');
         $kind=$in['kind']??'text';if(!in_array($kind,['text','code','file'],true))fail('Choose text, code or file.');$entry=['id'=>bin2hex(random_bytes(8)),'kind'=>$kind,'created'=>time()];$dest=null;
         if($kind==='file'){
-            $f=$_FILES['file']??null;if(!$f||$f['error']!==UPLOAD_ERR_OK||$f['size']<1||$f['size']>$limits['file_mb']*1048576)fail('File exceeds the anonymous upload limit.');
+            $f=receivedFile();if($f['size']<1||$f['size']>min($limits['file_mb']*1048576,hostingFileLimit()))fail('File exceeds the anonymous upload limit.');
             $name=basename(str_replace('\\','/',$f['name']));$ext=strtolower(pathinfo($name,PATHINFO_EXTENSION));$mime=(new finfo(FILEINFO_MIME_TYPE))->file($f['tmp_name']);$types=mediaTypes();
             if(mb_strlen($name)>255||!isset($types[$ext])||!in_array($mime,$types[$ext],true))fail('Use images, video, audio, PDF, DOCX, ODT, TXT, MD or CSV.');
             if(in_array($ext,['docx','odt'])&&!validOfficeDocument($f['tmp_name'],$ext))fail('Invalid document structure.');

@@ -8,7 +8,9 @@ function authAction(string $action,array $in): never {
         $name=trim($in['name']??'');$pw=$in['password']??'';
         if (mb_strlen($name)<2 || mb_strlen($name)>120 || !filter_var($email,FILTER_VALIDATE_EMAIL) || mb_strlen($email)>190 || mb_strlen($pw)<12 || strlen($pw)>72) fail('Enter a name, valid email, and a password of 12–72 characters.');
         if (one('SELECT id FROM users WHERE email=?',[$email])) fail('Unable to create account with these details. Try signing in or resetting your password.');
-        query('INSERT INTO users(name,email,password_hash,created_at,updated_at) VALUES(?,?,?,?,?)',[$name,$email,password_hash($pw,PASSWORD_DEFAULT),now(),now()]);$id=(int)db()->lastInsertId();
+        $username=empty($in['username'])?availableUsername($email):normalizedUsername($in['username']);
+        if(one('SELECT id FROM users WHERE username=?',[$username]))fail('Username is already taken. Choose another.');
+        try{query('INSERT INTO users(name,email,username,password_hash,created_at,updated_at) VALUES(?,?,?,?,?,?)',[$name,$email,$username,password_hash($pw,PASSWORD_DEFAULT),now(),now()]);}catch(PDOException $e){if($e->getCode()==='23000')fail('These account details are already in use.');throw $e;}$id=(int)db()->lastInsertId();
         $requestedRole=($in['role']??'student')==='teacher'?'teacher':'student';
         query('UPDATE users SET role=? WHERE id=?',[$requestedRole,$id]);
         controlRecord($id);query("UPDATE account_controls SET approval='pending' WHERE user_id=?",[$id]);
@@ -19,9 +21,10 @@ function authAction(string $action,array $in): never {
         respond(['message'=>$sent?'Check your email to verify your account.':'Account created, but email delivery failed. Use Resend after SMTP is configured.','user'=>safeUser(one('SELECT * FROM users WHERE id=?',[$id]))]);
     }
     if ($action==='login') {
-        limit('login-'.$ip.'-'.$email,8,900);$u=one('SELECT * FROM users WHERE email=?',[$email]);
+        $identifier=strtolower(trim((string)($in['identifier']??$in['email']??'')));if(strlen($identifier)>190)fail('Enter your username or email.');
+        limit('login-'.$ip.'-'.$identifier,8,900);$u=str_contains($identifier,'@')?one('SELECT * FROM users WHERE email=?',[$identifier]):one('SELECT * FROM users WHERE username=?',[$identifier]);
         $dummy='$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi';
-        if (!password_verify($in['password']??'',$u['password_hash']??$dummy) || !$u || $u['status']!=='active') fail('Email or password is incorrect.',401);
+        if (!password_verify($in['password']??'',$u['password_hash']??$dummy) || !$u || $u['status']!=='active') fail('Username/email or password is incorrect.',401);
         session_regenerate_id(true);rotateCsrf();$_SESSION['user_id']=$u['id'];$_SESSION['version']=$u['session_version'];$_SESSION['last_seen']=time();
         if (!empty($in['remember'])) cookie('bou_remember',token((int)$u['id'],'remember',2592000),time()+2592000);
         notify((int)$u['id'],'New sign-in','Your account was signed in at '.now().' UTC.');

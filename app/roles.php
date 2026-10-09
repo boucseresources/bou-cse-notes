@@ -20,7 +20,7 @@ function accountLimit(int $uid,string $key,int $fallback): int {
 function guestLimits(): array {
     $defaults=['enabled'=>1,'file_mb'=>10,'text_mb'=>1,'page_mb'=>50,'entries'=>20,'total_mb'=>500,'pages_hour'=>10,'max_hours'=>168];$result=[];
     foreach($defaults as $k=>$v)$result[$k]=(int)setting('guest_'.$k,$v);
-    return $result;
+    $result['max_file_bytes']=min($result['file_mb']*1048576,hostingFileLimit());return $result;
 }
 function auditAdmin(int $actor,string $action,?int $target,array $detail=[]): void {
     query('INSERT INTO admin_audit(actor_id,action,target_id,detail,created_at) VALUES(?,?,?,?,?)',[$actor,$action,$target,json_encode($detail),now()]);

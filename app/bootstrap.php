@@ -2,7 +2,7 @@
 declare(strict_types=1);
 const ROOT = __DIR__ . '/..';
 require_once __DIR__.'/email-template.php';
-require_once __DIR__.'/roles.php';
+require_once __DIR__.'/roles.php';require_once __DIR__.'/identity.php';
 if (!is_file(ROOT.'/config/config.php')) {
     http_response_code(503); exit('Setup required: copy config/config.example.php to config/config.php and follow README.md.');
 }
@@ -67,7 +67,7 @@ function user(bool $required=true,bool $verified=true): ?array {
     if ($u && $verified && !$u['verified_at']) fail('Verify your email to open your workspace.',403);
     return $u;
 }
-function safeUser(array $u): array { if(!isset($u['permissions']))$u=accountAccess($u);unset($u['password_hash']);$u['preferences']=json_decode($u['preferences']??'{}',true) ?: new stdClass();return $u; }
+function safeUser(array $u): array { if(!isset($u['permissions']))$u=accountAccess($u);$u['photo_url']=photoUrl($u);unset($u['password_hash'],$u['profile_photo']);$u['preferences']=json_decode($u['preferences']??'{}',true) ?: new stdClass();return $u; }
 function limit(string $key,int $max,int $seconds): void {
     $bucket=hash('sha256',$key);$t=time();$driver=cfg('database')['driver'];
     if ($driver==='sqlite') query('INSERT OR IGNORE INTO rate_limits(bucket,attempts,started_at) VALUES(?,0,?)',[$bucket,$t]);
