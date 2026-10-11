@@ -1,6 +1,6 @@
 // One session-aware transport for forms, autosave, admin actions and uploads.
 export function createSessionClient({fetcher, uploader, readToken, writeToken, holdUpload = () => () => {}}) {
-    const publicActions = new Set(['login', 'register', 'forgot', 'reset', 'verify', 'temp_create', 'temp_add', 'temp_delete', 'temp_get', 'guest_limits', 'shared']);
+    const publicActions = new Set(['login', 'register', 'forgot', 'reset', 'verify', 'temp_create', 'temp_add', 'temp_delete', 'temp_get', 'guest_limits', 'shared', 'cms_site', 'cms_page']);
     const boundaries = new Set(['login', 'register', 'logout', 'logout_all']);
     let generation = 0;
     let owner, identityBlocked = false, refreshPending = null;

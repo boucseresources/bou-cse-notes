@@ -7,7 +7,7 @@ try {
     $in=$method==='POST'?(str_contains($_SERVER['CONTENT_TYPE']??'','application/json')?json_decode(file_get_contents('php://input'),true):$_POST):$_GET;
     if($method==='POST'&&(int)($_SERVER['CONTENT_LENGTH']??0)>iniBytes((string)ini_get('post_max_size')))fail('The upload exceeds the hosting request-size limit. Choose a smaller file.',413);
     if (!is_array($in)) fail('Invalid request.');
-    $writes=['profile_photo','profile_photo_remove','control_user','control_guest','control_request','storage_request','group_save','group_delete','broadcast_publish','broadcast_revoke','game_profile','game_cheer','temp_create','temp_add','temp_delete','study_save','coding_tick','register','login','logout','forgot','verify','reset','resend','save','upload','favorite','trash','restore','purge','duplicate','version_restore','share','revoke','settings','password','email','logout_all','mark_read','delete_notification','admin_update','admin_config','announce','report','delete_request'];
+    $writes=['cms_config','cms_page_save','cms_media_upload','cms_media_delete','cms_announce','profile_photo','profile_photo_remove','control_user','control_guest','control_request','storage_request','group_save','group_delete','broadcast_publish','broadcast_revoke','game_profile','game_cheer','temp_create','temp_add','temp_delete','study_save','coding_tick','register','login','logout','forgot','verify','reset','resend','save','upload','favorite','trash','restore','purge','duplicate','version_restore','share','revoke','settings','password','email','logout_all','mark_read','delete_notification','admin_update','admin_config','announce','report','delete_request'];
     if (in_array($action,$writes,true)) { if ($method!=='POST') fail('POST required.',405);csrf(); }
     if (in_array($action,['register','login','logout','forgot','verify','reset','resend'],true)) authAction($action,$in);
     if ($action==='guest_limits') respond(guestLimits());
@@ -22,7 +22,9 @@ try {
         respond(['item'=>itemData($item,true),'owner'=>one('SELECT name FROM users WHERE id=?',[$s['user_id']])['name']]);
     }
     if(in_array($action,['temp_create','temp_get','temp_add','temp_delete'],true))tempAction($action,$in);
+    if($action==='cms_site'||$action==='cms_page'){$viewer=user(false,false);if($method==='GET')session_write_close();if($action==='cms_site')respond(cmsPublic($viewer));cmsReadPage($in,$viewer);}
     $u=user();$uid=(int)$u['id'];if($method==='GET')session_write_close();
+    if(str_starts_with($action,'cms_'))cmsAction($action,$in,$u);
     if(in_array($action,['profile_photo','profile_photo_remove'],true))photoAction($u);
     if($action==='upload_policy')respond(['max_file_bytes'=>min($u['max_upload_mb']*1048576,hostingFileLimit()),'quota_mb'=>$u['quota_mb'],'formats'=>'Images, PDF, documents, text, video and audio']);
     if(str_starts_with($action,'control_')||str_starts_with($action,'group_')||str_starts_with($action,'broadcast_')||$action==='storage_request')roleAction($action,$in,$u);
@@ -157,7 +159,7 @@ try {
         echo json_encode(['user'=>safeUser($u),'items'=>array_map(fn($x)=>itemData($x,true),all('SELECT * FROM items WHERE user_id=?',[$uid]))],JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE);exit;
     }
     if ($action==='delete_request') {limit('delete-request-'.$uid,1,86400);if (!password_verify($in['password']??'',$u['password_hash'])) fail('Password is incorrect.');foreach (all("SELECT id FROM users WHERE role IN ('admin','super_admin') AND status='active'") as $a) notify((int)$a['id'],'Account deletion request',$u['email'].' has requested account deletion. Contact the student and follow the backup retention policy.');notify($uid,'Deletion request received','An administrator will contact you to confirm and process your request.');respond(['ok'=>true]);}
-    if ($action==='help') respond(['support_email'=>setting('support_email',cfg('support_email'))]);
+    if ($action==='help') respond(['support_email'=>cmsState()['data']['support_email'] ?: setting('support_email',cfg('support_email'))]);
     if ($action==='report') {limit('report-'.$uid,5,3600);$content=trim($in['content']??'');if (!$content || mb_strlen($content)>4000) fail('Write a message of up to 4000 characters.');foreach (all("SELECT id FROM users WHERE role IN ('admin','super_admin') AND status='active'") as $a) notify((int)$a['id'],'Feedback / content report',$u['email'].': '.$content);respond(['ok'=>true]);}
     if (str_starts_with($action,'admin_') || $action==='announce') {
         if (!isSuper($u)) fail('Administrator access required.',403);

@@ -10,7 +10,7 @@ with tempfile.TemporaryDirectory(prefix='bou-role-test-') as temporary:
  root=pathlib.Path(temporary)
  for name in ['app','bin','database']:shutil.copytree(REPO/name,root/name)
  (root/'public').mkdir();(root/'config').mkdir();(root/'storage').mkdir()
- for name in ['api.php','download.php','temp-file.php','avatar.php']:shutil.copy2(REPO/'public'/name,root/'public'/name)
+ for name in ['api.php','download.php','temp-file.php','avatar.php','cms-media.php']:shutil.copy2(REPO/'public'/name,root/'public'/name)
  (root/'public/paths.php').write_text("<?php require __DIR__.'/../app/bootstrap.php';\n")
  with socket.socket() as sock:sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
  url='http://127.0.0.1:'+str(port)
@@ -32,5 +32,6 @@ with tempfile.TemporaryDirectory(prefix='bou-role-test-') as temporary:
    subprocess.run(['python3',str(REPO/'tests/roles-api-test.py')],env=env,check=True)
    subprocess.run(['python3',str(REPO/'tests/performance-api-test.py')],env=env,check=True)
    subprocess.run(['python3',str(REPO/'tests/mobile-profile-api-test.py')],env=env,check=True)
+   subprocess.run(['python3',str(REPO/'tests/cms-api-test.py')],env=env,check=True)
   finally:
    process.terminate();process.wait(timeout=5)

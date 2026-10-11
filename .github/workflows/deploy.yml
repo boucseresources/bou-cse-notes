@@ -19,7 +19,7 @@ jobs:
           node-version: '22'
           cache: npm
       - name: Build browser assets
-        run: npm ci && npm run build && npm run check && node --test tests/session-client.test.mjs
+        run: npm ci && npm run build && npm run check && node --test tests/session-client.test.mjs tests/youtube-links.test.mjs tests/cms-render.test.mjs
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'

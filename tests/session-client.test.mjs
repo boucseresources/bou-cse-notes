@@ -40,7 +40,7 @@ for(const action of ['login','register','forgot','reset','verify','temp_create',
         assert.deepEqual(JSON.parse(h.calls[2].opts.body),data);
     });
 }
-for(const action of ['save','settings','password','email','resend','admin_config','announce','mark_read','study_save','coding_tick','share','report','admin_revoke']) {
+for(const action of ['save','settings','password','email','resend','admin_config','announce','mark_read','study_save','coding_tick','share','report','admin_revoke','cms_config','cms_page_save','cms_media_upload','cms_media_delete','cms_announce']) {
     test(action+' renews a stale token once for the same signed-in account',async()=>{
         const h=harness({user:{id:7}});await h.client.get('session');h.change({id:7},'renewed');
         await h.client.request(action,{value:'preserved'});
@@ -143,3 +143,4 @@ test('the upload navigation lock covers renewal and is always released',async()=
     });
     await client.upload('temp_add',new FormData());assert.equal(lock,0);
 });
+
